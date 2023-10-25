@@ -1,16 +1,21 @@
+# -*- coding: utf-8 -*-
+# Time       : 2023/10/25 7:12
+# Author     : QIN2DIM
+# GitHub     : https://github.com/QIN2DIM
+# Description:
 import inspect
 import logging
 import sys
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 import clip
 import open_clip
 import torch
 from PIL import Image
 
-from templates import EVA02_L_14_336
+warnings.filterwarnings("ignore", category=UserWarning)
 
 logging.basicConfig(
     level=logging.INFO, stream=sys.stdout, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -86,29 +91,28 @@ class ModelCard:
                 "If you decide to export the model on the huggingface, "
                 "please customize the onnx_visual and onnx_textual fields."
             )
-            _prefix = self.model_name.split("/")[-1]
+            _prefix = self.model_name.split(":")[-1]
 
         if not self.tag:
-            self.onnx_visual = f"visual_CLIP_{_prefix}.onnx"
-            self.onnx_textual = f"textual_CLIP_{_prefix}.onnx"
+            inner_ = _prefix.split("/")[-1]
+            self.onnx_visual = f"visual_CLIP_{inner_}.onnx"
+            self.onnx_textual = f"textual_CLIP_{inner_}.onnx"
         else:
             self.onnx_visual = f"visual_CLIP_{_prefix}.{self.tag}.onnx"
             self.onnx_textual = f"textual_CLIP_{_prefix}.{self.tag}.onnx"
 
         _suffix = 1
         for _ in range(100):
-            pre_dir = self.model_dir.joinpath(self.model_name, f"v{_suffix}")
+            pre_dir = self.model_dir.joinpath(_prefix, f"v{_suffix}")
             if not pre_dir.exists():
                 pre_dir.mkdir(parents=True, exist_ok=True)
                 break
             _suffix += 1
 
-        self.onnx_visual_path = self.model_dir.joinpath(
-            self.model_name, f"v{_suffix}", self.onnx_visual
-        )
-        self.onnx_textual_path = self.model_dir.joinpath(
-            self.model_name, f"v{_suffix}", self.onnx_textual
-        )
+        self.onnx_visual_path = self.model_dir.joinpath(_prefix, f"v{_suffix}", self.onnx_visual)
+        self.onnx_textual_path = self.model_dir.joinpath(_prefix, f"v{_suffix}", self.onnx_textual)
+        print(self.onnx_textual_path)
+        print(self.onnx_textual_path)
 
     @classmethod
     def from_template(cls, template):
@@ -167,30 +171,3 @@ class ModelCard:
             f=f"{self.onnx_textual_path}",
             **self.DEFAULT_TEXTUAL_FIELDS,
         )
-
-
-def print_available_open_clip_models():
-    def lookup(mol: Callable[[], list]):
-        for model_name in mol():
-            if tags := open_clip.list_pretrained_tags_by_model(model_name):
-                for tag in tags:
-                    card = {"model": model_name, "tag": tag}
-                    print(f"ModelCard | {card}")
-            card = {"model": model_name, "tag": ""}
-            print(f"ModelCard | {card}")
-
-    lookup(open_clip.list_openai_models)
-    lookup(open_clip.list_models)
-
-
-def main():
-    assets_dir = Path(__file__).parent.joinpath("assets")
-    dummy_image_path = assets_dir.joinpath("hello-world.jpg")
-
-    model_card = ModelCard.from_template(EVA02_L_14_336)
-    model_card(dummy_image_path=dummy_image_path)
-
-
-if __name__ == "__main__":
-    # print_available_open_clip_models()
-    main()

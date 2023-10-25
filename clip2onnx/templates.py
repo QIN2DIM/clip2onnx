@@ -3,6 +3,17 @@
 # Author     : QIN2DIM
 # GitHub     : https://github.com/QIN2DIM
 # Description:
+"""
+Open-CLIP Benchmarks
+> https://github.com/mlfoundations/open_clip/blob/main/docs/openclip_results.csv
+
+Open-CLIP Model Profile
+> https://github.com/mlfoundations/open_clip/blob/main/docs/model_profile.csv
+
+Awesome list for production on CLIP
+> https://github.com/QIN2DIM/awesome-clip-production
+"""
+
 HF_ViT_L_14 = {
     # 2023-10-25, 1.79GB, 0.7921 % ImageNet-1k
     # https://huggingface.co/laion/CLIP-ViT-L-14-DataComp.XL-s13B-b90K
