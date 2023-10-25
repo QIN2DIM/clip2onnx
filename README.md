@@ -37,7 +37,7 @@ if __name__ == "__main__":
 
 ## Example: Zero-shot Image Classification
 
-→ see more details.
+→ [see more details](https://github.com/QIN2DIM/clip2onnx/blob/main/examples/auto_labeling.py)
 
 ## Example: ONNX Simplify
 
