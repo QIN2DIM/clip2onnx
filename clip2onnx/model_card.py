@@ -158,9 +158,9 @@ class ModelCard:
     def to_onnx_textual(self, model, device):
         dummy_text = clip.tokenize(
             [
-                "a photo taken during the day",
-                "a photo taken at night",
-                "a photo taken of Mickey Mouse",
+                "This is a photo of cat.",
+                "This is a photo of dog.",
+                "This is a photo of girl.",
             ]
         ).to(device)
 
