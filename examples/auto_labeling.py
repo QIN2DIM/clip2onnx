@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Literal
 
 from PIL import Image
-# pip install -U hcaptcha_challenger
+# pip install hcaptcha_challenger==0.9.0
 from hcaptcha_challenger import (
     DataLake,
     install,
