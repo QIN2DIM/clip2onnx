@@ -41,4 +41,12 @@ if __name__ == "__main__":
 
 ## Example: ONNX Simplify
 
+→ TODO
+
 ## Example: Quant INT8
+
+→ TODO
+
+## Example: CLIP(ONNX) as service
+
+→ TODO
