@@ -14,11 +14,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Tuple, List
 
-# pip install hcaptcha-challenger==0.9.1.post4
-import hcaptcha_challenger as solver
 from PIL import Image
-from hcaptcha_challenger import DataLake, ModelHub, ZeroShotImageClassifier, register_pipline
 from tqdm import tqdm
+
+from clip_onnx import DataLake, ZeroShotImageClassifier, register_pipline
 
 logging.basicConfig(
     level=logging.INFO, stream=sys.stdout, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -131,19 +130,22 @@ class AutoLabeling:
 
 
 def run():
-    # Make sure you have torch and transformers installed and
-    # the NVIDIA graphics card is available
-    solver.install(upgrade=True, clip=True)
-    modelhub = ModelHub.from_github_repo()
-    model = register_pipline(modelhub, fmt="onnx")
+    # Execute 'convert.py' to generate ONNX model
+    model = register_pipline(
+        visual_path=Path("visual_CLIP_RN50.openai.onnx"),
+        textual_path=Path("textual_CLIP_RN50.openai.onnx"),
+    )
 
+    # Dataset Path
     assets_dir = Path(__file__).parent.parent.joinpath("assets")
+
+    # Prompt mapping
     flow_card = [
         {
             "joined_dirs": ["images"],
             "positive_labels": ["off-road vehicle"],
             "negative_labels": ["car", "bicycle", "turtle", "hummingbird", "ant", "frog"],
-        },
+        }
     ]
 
     for card in flow_card:
