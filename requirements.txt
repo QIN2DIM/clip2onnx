@@ -5,7 +5,14 @@ torch>=2.0.1+cu118
 # todo: pip install git+https://github.com/openai/CLIP.git@main
 git+https://github.com/openai/CLIP.git@main
 
+# Export todo: pip install -U numpy open_clip_torch Pillow onnx
 numpy>=1.24.1
 open_clip_torch>=2.23.0
 Pillow>=9.3.0
 onnx>=1.14.1
+
+# Demo todo: pip install -U opencv-python regex ftfy onnxruntime tqdm
+opencv-python>=4.8.1.78
+ftfy>=6.1.1
+regex>=2023.10.3
+onnxruntime>=1.16.1
