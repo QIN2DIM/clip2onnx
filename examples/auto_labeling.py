@@ -5,129 +5,160 @@
 # Description:
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import sys
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Tuple, List
 
+# pip install hcaptcha-challenger==0.9.1.post4
+import hcaptcha_challenger as solver
 from PIL import Image
-# pip install hcaptcha_challenger==0.9.0
-from hcaptcha_challenger import (
-    DataLake,
-    install,
-    ModelHub,
-    ZeroShotImageClassifier,
-    register_pipline,
-)
+from hcaptcha_challenger import DataLake, ModelHub, ZeroShotImageClassifier, register_pipline
 from tqdm import tqdm
 
-install(upgrade=True)
-
-assets_dir = Path(__file__).parent.parent.joinpath("assets")
-model_dir = Path(__file__).parent.parent.joinpath("model")
-images_dir = assets_dir.joinpath("off_road_vehicle")
+logging.basicConfig(
+    level=logging.INFO, stream=sys.stdout, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
-def flush_env():
-    __formats = ("%Y-%m-%d %H:%M:%S.%f", "%Y%m%d%H%M")
-    now = datetime.strptime(str(datetime.now()), __formats[0]).strftime(__formats[1])
-    yes_dir = images_dir.joinpath(now, "yes")
-    bad_dir = images_dir.joinpath(now, "bad")
-    for cd in [yes_dir, bad_dir]:
-        shutil.rmtree(cd, ignore_errors=True)
-        cd.mkdir(parents=True, exist_ok=True)
-
-    return yes_dir, bad_dir
-
-
-def auto_labeling(
-        fmt: Literal["onnx", "transformers"] = None,
-        visual_path: Path | None = None,
-        textual_path: Path | None = None,
-        **kwargs,
-):
+@dataclass
+class AutoLabeling:
     """
-    Demonstrates how to read onnx models and run them (without relying on torches)
+    Example:
+    ---
 
-    :param fmt:
-        (Default to None)
-        IF fmt in ["onnx"]:
-            Load ONNX model and complete inference task based on CPU. The whole process does not rely on torch.
-        ELSE:
-            - If your environment has 'transformers' and 'torch' installed and the cuda graphics card is available,
-            it will automatically switch to GPU mode.
-            - But this situation is not within the scope of our demonstration, only for comparison.
-            - At this time, the program will pull the preset pipline model from the huggingface to
-            perform the zero-shot image classification task.
+    1. Roughly observe the distribution of the dataset and design a DataLake for the challenge prompt.
+        - ChallengePrompt: "Please click each image containing an off-road vehicle"
+        - positive_labels --> ["off-road vehicle"]
+        - negative_labels --> ["bicycle", "car"]
 
-            That is, the `visual_path` and `textual_path` parameters do not take effect at this time.
+    2. You can design them in batches and save them as YAML files,
+    which the classifier can read and automatically DataLake
 
-    :param visual_path:
-        (Default to None) Path to visual ONNX model.
-        If not set, the program pulls the default ONNX model from the GitHub repository
+    3. Note that positive_labels is a list, and you can specify multiple labels for this variable
+    if the label pointed to by the prompt contains ambiguity。
 
-    :param textual_path:
-        (Default to None) Path to textual ONNX model.
-        If not set, the program pulls the default ONNX model from the GitHub repository
-
-    :return:
     """
-    modelhub = ModelHub.from_github_repo()
-    modelhub.parse_objects()
 
-    # Refresh experiment environment
-    yes_dir, bad_dir = flush_env()
+    input_dir: Path = field(default_factory=Path)
+    pending_tasks: List[Path] = field(default_factory=list)
+    tool: ZeroShotImageClassifier = field(default_factory=ZeroShotImageClassifier)
 
-    # Prompt: "Please click each image containing an off-road vehicle"
-    data_lake = DataLake.from_prompts(
-        positive_labels=["off-road vehicle"], negative_labels=["bicycle", "car"]
-    )
+    output_dir: Path = field(default_factory=Path)
 
-    # Parse DataLake and build the model pipline
-    tool = ZeroShotImageClassifier.from_datalake(data_lake)
-    model = register_pipline(
-        modelhub, fmt=fmt, visual_path=visual_path, textual_path=textual_path, **kwargs
-    )
+    limit: int = field(default=1)
+    """
+    By default, all pictures in the specified folder are classified and moved,
+    Specifies the limit used to limit the number of images for the operation.
+    """
 
-    total = len(os.listdir(images_dir))
-    with tqdm(total=total, desc=f"Labeling | {images_dir.name}") as progress:
-        for image_name in os.listdir(images_dir):
-            image_path = images_dir.joinpath(image_name)
-            if not image_path.is_file():
-                progress.total -= 1
-                continue
+    @classmethod
+    def from_datalake(cls, dl: DataLake, **kwargs):
+        if not isinstance(dl.joined_dirs, Path):
+            raise TypeError(
+                f"The dataset joined_dirs needs to be passed in for auto-labeling. - {dl.joined_dirs=}"
+            )
+        if not dl.joined_dirs.exists():
+            raise ValueError(f"Specified dataset path does not exist - {dl.joined_dirs=}")
 
-            # we're only dealing with binary classification tasks here
-            # The label at position 0 is the highest scoring target
-            results = tool(model, Image.open(image_path))
-            if results[0]["label"] in data_lake.positive_labels:
-                output_path = yes_dir.joinpath(image_name)
-            else:
-                output_path = bad_dir.joinpath(image_name)
-            shutil.copyfile(image_path, output_path)
+        input_dir = dl.joined_dirs
+        pending_tasks = []
+        for image_name in os.listdir(input_dir):
+            image_path = input_dir.joinpath(image_name)
+            if image_path.is_file():
+                pending_tasks.append(image_path)
 
-            progress.update(1)
+        if (limit := kwargs.get("limit")) is None:
+            limit = len(pending_tasks)
+        elif not isinstance(limit, int) or limit < 1:
+            raise ValueError(f"limit should be a positive integer greater than zero. - {limit=}")
 
-    if "win32" in sys.platform:
-        os.startfile(images_dir)
+        tool = ZeroShotImageClassifier.from_datalake(dl)
+        return cls(tool=tool, input_dir=input_dir, pending_tasks=pending_tasks, limit=limit)
+
+    def mkdir(self) -> Tuple[Path, Path, Path]:
+        __formats = ("%Y-%m-%d %H:%M:%S.%f", "%Y%m%d%H%M")
+        now = datetime.strptime(str(datetime.now()), __formats[0]).strftime(__formats[1])
+        tmp_dir = self.input_dir.joinpath(now)
+        yes_dir = tmp_dir.joinpath("yes")
+        bad_dir = tmp_dir.joinpath("bad")
+        yes_dir.mkdir(parents=True, exist_ok=True)
+        bad_dir.mkdir(parents=True, exist_ok=True)
+
+        self.output_dir = tmp_dir
+
+        for label in self.tool.candidate_labels:
+            tmp_dir.joinpath(label).mkdir(parents=True, exist_ok=True)
+
+        return yes_dir, bad_dir, tmp_dir
+
+    def execute(self, model):
+        if not self.pending_tasks:
+            logging.info("No pending tasks")
+            return
+
+        yes_dir, bad_dir, tmp_dir = self.mkdir()
+
+        desc_in = f'"{self.input_dir.parent.name}/{self.input_dir.name}"'
+        total = len(self.pending_tasks)
+
+        logging.info(f"load {self.tool.positive_labels=}")
+        logging.info(f"load {self.tool.candidate_labels=}")
+
+        with tqdm(total=total, desc=f"Labeling | {desc_in}") as progress:
+            for image_path in self.pending_tasks[: self.limit]:
+                # The label at position 0 is the highest scoring target
+                image = Image.open(image_path)
+                results = self.tool(model, image)
+
+                # we're only dealing with binary classification tasks here
+                trusted_label = results[0]["label"]
+                if trusted_label in self.tool.positive_labels:
+                    output_path = yes_dir.joinpath(image_path.name)
+                else:
+                    output_path = bad_dir.joinpath(image_path.name)
+                shutil.copyfile(image_path, output_path)
+
+                # Store multi-classification results
+                bk_path = tmp_dir.joinpath(trusted_label, image_path.name)
+                shutil.copyfile(image_path, bk_path)
+
+                progress.update(1)
 
 
 def run():
-    # 1. Use the model you just converted to ONNX format
-    # auto_labeling(
-    #     fmt="onnx",
-    #     textual_path=model_dir.joinpath("path/to/textual_model"),
-    #     visual_path=model_dir.joinpath("path/to/visual_model")
-    # )
+    # Make sure you have torch and transformers installed and
+    # the NVIDIA graphics card is available
+    solver.install(upgrade=True, clip=True)
+    modelhub = ModelHub.from_github_repo()
+    model = register_pipline(modelhub, fmt="onnx")
 
-    # 2. Using automatic mode, you can see the demo running effect first.
-    auto_labeling()
+    assets_dir = Path(__file__).parent.parent.joinpath("assets")
+    flow_card = [
+        {
+            "joined_dirs": ["images"],
+            "positive_labels": ["off-road vehicle"],
+            "negative_labels": ["car", "bicycle", "turtle", "hummingbird", "ant", "frog"],
+        },
+    ]
 
-    # 3. Using CUDA mode, You need to install `transformers`. For comparison only
-    # pip install -U transformers
-    # auto_labeling(fmt="transformers")
+    for card in flow_card:
+        # Generating a dataclass from serialized data
+        dl = DataLake(
+            positive_labels=card["positive_labels"],
+            negative_labels=card["negative_labels"],
+            joined_dirs=assets_dir.joinpath(*card["joined_dirs"]),
+        )
+        # Starts an automatic labeling task
+        al = AutoLabeling.from_datalake(dl)
+        al.execute(model)
+        # Automatically open output directory
+        if "win32" in sys.platform and al.output_dir.is_dir():
+            os.startfile(al.output_dir)
 
 
 if __name__ == "__main__":
