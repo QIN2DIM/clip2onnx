@@ -35,7 +35,7 @@ class ModelCard:
 
     model_name: str
     """
-    model name
+    regular model name
     """
 
     tag: str = ""
@@ -51,8 +51,8 @@ class ModelCard:
     please customize the onnx_visual and onnx_textual fields.
     """
 
-    onnx_visual_path: Path = field(default=Path)
-    onnx_textual_path: Path = field(default=Path)
+    onnx_visual_path: Path = field(default_factory=Path)
+    onnx_textual_path: Path = field(default_factory=Path)
     model_dir: Path = Path("model")
     """
     Default export path:
@@ -93,6 +93,7 @@ class ModelCard:
             )
             _prefix = self.model_name.split(":")[-1]
 
+        # fixme: more standardized model naming
         if not self.tag:
             inner_ = _prefix.split("/")[-1]
             self.onnx_visual = f"visual_CLIP_{inner_}.onnx"
@@ -111,8 +112,8 @@ class ModelCard:
 
         self.onnx_visual_path = self.model_dir.joinpath(_prefix, f"v{_suffix}", self.onnx_visual)
         self.onnx_textual_path = self.model_dir.joinpath(_prefix, f"v{_suffix}", self.onnx_textual)
-        print(self.onnx_textual_path)
-        print(self.onnx_textual_path)
+        logging.info(self.onnx_textual_path)
+        logging.info(self.onnx_textual_path)
 
     @classmethod
     def from_template(cls, template):
@@ -157,11 +158,7 @@ class ModelCard:
 
     def to_onnx_textual(self, model, device):
         dummy_text = clip.tokenize(
-            [
-                "This is a photo of cat.",
-                "This is a photo of dog.",
-                "This is a photo of girl.",
-            ]
+            ["This is a photo of cat.", "This is a photo of dog.", "This is a photo of girl."]
         ).to(device)
 
         model.forward = model.encode_text
